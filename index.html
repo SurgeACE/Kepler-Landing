@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kepler — AI ASIC Design</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <script src="https://cdn.tailwindcss.com" onerror="document.documentElement.classList.add('no-tw')"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" onerror="document.documentElement.classList.add('no-gsap')"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" onerror=""></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -156,7 +156,40 @@
 
         /* Data stream paths */
         .data-stream{position:fixed;pointer-events:none;z-index:2}
+
+        /* ===== FALLBACK: ensure content visible when JS/CDN fails ===== */
+        .hero-el{opacity:1}
+        .gsap-ready .hero-el{opacity:0}
+
+        /* noscript / CDN-fail: show everything */
+        .no-gsap .hero-el,
+        .no-gsap .reveal-left,
+        .no-gsap .reveal-right,
+        .no-gsap .reveal-up,
+        .no-gsap .reveal-scale{opacity:1!important;transform:none!important}
+
+        /* Tailwind CDN fail: inline critical layout */
+        .no-tw *{box-sizing:border-box}
+        .no-tw body{margin:0;font-family:'Inter',system-ui,sans-serif;background:#08090f;color:#e4e4e7}
+        .no-tw section{padding:3rem 1.5rem}
+        .no-tw .max-w-3xl,.no-tw .max-w-5xl,.no-tw .max-w-lg{max-width:800px;margin-left:auto;margin-right:auto}
+        .no-tw .text-center{text-align:center}
+        .no-tw .grid{display:grid;gap:1.25rem}
+        .no-tw .flex{display:flex}
+        .no-tw .items-center{align-items:center}
+        .no-tw .justify-center{justify-content:center}
+        .no-tw .hidden{display:none}
+        .no-tw nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:.75rem 1.5rem;background:rgba(8,9,15,.88)}
+        .no-tw h1{font-size:3rem;font-weight:700;line-height:1.05;margin-bottom:2rem}
+        .no-tw h2{font-size:1.5rem;font-weight:600;margin-bottom:1rem}
+        .no-tw a{color:#A78BFA;text-decoration:none}
     </style>
+    <noscript><style>
+        .hero-el,.reveal-left,.reveal-right,.reveal-up,.reveal-scale{opacity:1!important;transform:none!important}
+        #demo-launch{display:none!important}
+        #demo-body{display:block!important}
+        .circuit-rail{display:none!important}
+    </style></noscript>
 </head>
 <body>
     <div class="glow glow-a"></div>
@@ -740,6 +773,8 @@
     railNodes.forEach(n=>{n.addEventListener('click',()=>{const sec=n.getAttribute('data-section');document.getElementById(sec)?.scrollIntoView({behavior:'smooth'});});});
 
     // ===== GSAP =====
+    if(typeof gsap!=='undefined'&&typeof ScrollTrigger!=='undefined'){
+    document.documentElement.classList.add('gsap-ready');
     gsap.registerPlugin(ScrollTrigger);
     gsap.from('.hero-el',{y:50,opacity:0,duration:1,stagger:.18,ease:'power3.out',delay:.3});
     gsap.to('#hero-content',{scrollTrigger:{trigger:'#hero-section',start:'80% top',end:'bottom -20%',scrub:true},y:-30,opacity:0});
@@ -763,6 +798,7 @@
     gsap.utils.toArray('.feat-card').forEach((card,i)=>{
         gsap.to(card,{scrollTrigger:{trigger:card,start:'top 90%',end:'bottom 10%',scrub:true},y:-6,ease:'none'});
     });
+    } // end gsap guard
 
     // ===== DEMO =====
     const DEMO_LINES=[
