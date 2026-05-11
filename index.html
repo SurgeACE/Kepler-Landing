@@ -152,7 +152,8 @@
 
         /* Shimmer on "intelligence" */
         @keyframes shimmer{0%{background-position:200% center}100%{background-position:-200% center}}
-        .shimmer-text{background:linear-gradient(90deg,#7C3AED 0%,#A78BFA 20%,#06B6D4 40%,#fff 50%,#06B6D4 60%,#A78BFA 80%,#7C3AED 100%);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shimmer 4s linear infinite}
+        .shimmer-text{background:linear-gradient(90deg,#7C3AED 0%,#A78BFA 20%,#06B6D4 40%,#fff 50%,#06B6D4 60%,#A78BFA 80%,#7C3AED 100%);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:shimmer 4s linear infinite}
+        @supports not (background-clip:text){.shimmer-text{color:#A78BFA!important;background:none!important}}
 
         /* Data stream paths */
         .data-stream{position:fixed;pointer-events:none;z-index:2}
@@ -160,16 +161,18 @@
         /* ===== FALLBACK: ensure content visible when JS/CDN fails ===== */
         /* Auto-reveal after 1.5s if JS never fires */
         @keyframes auto-reveal{to{opacity:1!important;transform:none!important}}
-        .reveal-left,.reveal-right,.reveal-up,.reveal-scale{
-            animation:auto-reveal 0.01s 1.5s forwards;
+        .reveal-left,.reveal-right,.reveal-up,.reveal-scale,.pipeline-step,.hero-el{
+            animation:auto-reveal 0.01s 2s forwards;
         }
         .revealed{animation:none}
 
         /* CDN-fail classes */
+        .no-gsap .hero-el,
         .no-gsap .reveal-left,
         .no-gsap .reveal-right,
         .no-gsap .reveal-up,
-        .no-gsap .reveal-scale{opacity:1!important;transform:none!important}
+        .no-gsap .reveal-scale,
+        .no-gsap .pipeline-step{opacity:1!important;transform:none!important}
 
         /* Tailwind CDN fail: inline critical layout */
         .no-tw *{box-sizing:border-box}
@@ -188,7 +191,7 @@
         .no-tw a{color:#A78BFA;text-decoration:none}
     </style>
     <noscript><style>
-        .hero-el,.reveal-left,.reveal-right,.reveal-up,.reveal-scale{opacity:1!important;transform:none!important}
+        .hero-el,.reveal-left,.reveal-right,.reveal-up,.reveal-scale,.pipeline-step{opacity:1!important;transform:none!important}
         #demo-launch{display:none!important}
         #demo-body{display:block!important}
         .circuit-rail{display:none!important}
@@ -790,7 +793,7 @@
     setTimeout(()=>{document.getElementById('strike-tools')?.classList.add('struck');},2800);
 
     // Pipeline steps — animate in with stagger + light up sequentially
-    gsap.from('.pipeline-step',{scrollTrigger:{trigger:'#pipeline',start:'top 80%'},x:-15,opacity:0,duration:.4,stagger:.06,ease:'power2.out',onComplete:function(){
+    gsap.fromTo('.pipeline-step',{x:-15,opacity:0},{scrollTrigger:{trigger:'#pipeline',start:'top 80%'},x:0,opacity:1,duration:.4,stagger:.06,ease:'power2.out',onComplete:function(){
         // Light up steps one by one
         const steps=document.querySelectorAll('.pipeline-step');
         steps.forEach((s,i)=>{setTimeout(()=>s.classList.add('lit'),i*120);});
