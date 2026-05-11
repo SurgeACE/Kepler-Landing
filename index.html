@@ -158,11 +158,14 @@
         .data-stream{position:fixed;pointer-events:none;z-index:2}
 
         /* ===== FALLBACK: ensure content visible when JS/CDN fails ===== */
-        .hero-el{opacity:1}
-        .gsap-ready .hero-el{opacity:0}
+        /* Auto-reveal after 1.5s if JS never fires */
+        @keyframes auto-reveal{to{opacity:1!important;transform:none!important}}
+        .reveal-left,.reveal-right,.reveal-up,.reveal-scale{
+            animation:auto-reveal 0.01s 1.5s forwards;
+        }
+        .revealed{animation:none}
 
-        /* noscript / CDN-fail: show everything */
-        .no-gsap .hero-el,
+        /* CDN-fail classes */
         .no-gsap .reveal-left,
         .no-gsap .reveal-right,
         .no-gsap .reveal-up,
@@ -774,9 +777,8 @@
 
     // ===== GSAP =====
     if(typeof gsap!=='undefined'&&typeof ScrollTrigger!=='undefined'){
-    document.documentElement.classList.add('gsap-ready');
     gsap.registerPlugin(ScrollTrigger);
-    gsap.from('.hero-el',{y:50,opacity:0,duration:1,stagger:.18,ease:'power3.out',delay:.3});
+    gsap.fromTo('.hero-el',{y:50,opacity:0},{y:0,opacity:1,duration:1,stagger:.18,ease:'power3.out',delay:.3});
     gsap.to('#hero-content',{scrollTrigger:{trigger:'#hero-section',start:'80% top',end:'bottom -20%',scrub:true},y:-30,opacity:0});
 
     // Rocket launch on scroll — rises from planet and flies upward
