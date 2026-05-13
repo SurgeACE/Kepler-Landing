@@ -5,6 +5,10 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+# Prefer Node 24 for JS actions (see GitHub Actions deprecation notices).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: read
   pages: write
@@ -22,13 +26,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Build static site
         run: mkdir -p _site && cp index.html _site/
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: _site
       - name: Deploy to GitHub Pages
