@@ -19,40 +19,67 @@
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Inter',sans-serif;background:#08090f;color:#e4e4e7;overflow-x:hidden;min-height:100dvh}
         ::selection{background:#7C3AED;color:#fff}
-        #wip-modal::backdrop{background:rgba(0,0,0,0.65);backdrop-filter:blur(4px)}
-        #wip-modal[open]{animation:fadeIn 0.2s ease-out}
+        #launch-wip-modal::backdrop{background:rgba(0,0,0,0.65);backdrop-filter:blur(4px)}
+        #launch-wip-modal[open]{animation:fadeIn 0.25s ease-out}
         @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
+        .launch-ribbon{overflow:hidden;border-radius:0.75rem 0.75rem 0 0;border-bottom:1px solid rgba(124,58,237,0.25)}
+        .launch-ribbon-inner{
+            padding:0.65rem 1rem;
+            font-family:'JetBrains Mono',monospace;
+            font-size:0.68rem;
+            font-weight:500;
+            letter-spacing:0.2em;
+            text-transform:uppercase;
+            color:#fff;
+            text-align:center;
+            background:linear-gradient(105deg,#0e1019 0%,#1e1b4b 15%,#7C3AED 35%,#06B6D4 55%,#A78BFA 75%,#0e1019 100%);
+            background-size:220% 100%;
+            animation:ribbon-flow 5s linear infinite;
+            text-shadow:0 0 24px rgba(124,58,237,0.85),0 0 40px rgba(6,182,212,0.35);
+        }
+        @keyframes ribbon-flow{0%{background-position:0% center}100%{background-position:200% center}}
+        .launch-glow{box-shadow:0 0 0 1px rgba(124,58,237,0.35),0 0 40px -8px rgba(124,58,237,0.45),0 0 60px -12px rgba(6,182,212,0.2);animation:glow-pulse 3s ease-in-out infinite}
+        @keyframes glow-pulse{0%,100%{box-shadow:0 0 0 1px rgba(124,58,237,0.35),0 0 40px -8px rgba(124,58,237,0.45),0 0 60px -12px rgba(6,182,212,0.2)}50%{box-shadow:0 0 0 1px rgba(6,182,212,0.4),0 0 48px -6px rgba(6,182,212,0.35),0 0 72px -10px rgba(124,58,237,0.35)}}
     </style>
 </head>
 <body class="min-h-dvh flex flex-col items-center justify-center px-6 bg-k-bg text-k-text">
     <main class="text-center max-w-md">
         <p class="font-mono text-sm text-k-dim tracking-wide uppercase mb-3">Kepler</p>
-        <h1 class="text-2xl sm:text-3xl font-semibold text-k-text mb-2">Landing page</h1>
-        <p class="text-k-dim text-sm leading-relaxed mb-5">Placeholder — full experience coming later.</p>
-        <p class="text-k-dim text-xs leading-relaxed">
+        <h1 class="text-2xl sm:text-3xl font-semibold text-k-text mb-2">AI ASIC design</h1>
+        <p class="text-k-dim text-sm leading-relaxed mb-6">Placeholder — full experience coming later.</p>
+        <button type="button" id="launch-kepler" class="group relative w-full max-w-xs mx-auto rounded-xl px-6 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-k-violet via-violet-600 to-k-cyan bg-[length:200%_100%] transition-[background-position] duration-500 hover:bg-right focus:outline-none focus:ring-2 focus:ring-k-indigo focus:ring-offset-2 focus:ring-offset-k-bg shadow-lg shadow-violet-900/40">
+            <span class="relative z-10">Launch Kepler</span>
+        </button>
+        <p class="text-k-dim text-xs leading-relaxed mt-6">
             Public preview:
             <a href="https://surgeace.github.io/Kepler-Landing/" class="text-k-indigo hover:text-k-cyan underline-offset-2 hover:underline font-mono">surgeace.github.io/Kepler-Landing</a>
         </p>
     </main>
 
-    <dialog id="wip-modal" class="max-w-[min(100%,22rem)] w-full rounded-xl border border-k-border bg-k-s1 p-0 text-k-text shadow-2xl shadow-violet-950/40">
+    <dialog id="launch-wip-modal" class="max-w-[min(100%,24rem)] w-full rounded-xl border border-k-border bg-k-s1 p-0 text-k-text overflow-hidden launch-glow" aria-labelledby="launch-wip-title">
+        <div class="launch-ribbon" aria-hidden="true">
+            <div class="launch-ribbon-inner">Work in progress · Coming soon</div>
+        </div>
         <div class="p-6 flex flex-col gap-4">
             <div>
-                <p class="font-semibold text-lg text-k-text mb-1">Work in progress</p>
-                <p class="text-sm text-k-dim leading-relaxed">This site is still under construction and will be revealed soon.</p>
+                <p id="launch-wip-title" class="font-semibold text-lg text-k-text mb-1">Kepler isn’t live here yet</p>
+                <p class="text-sm text-k-dim leading-relaxed">We’re still building the full launch experience. Check back soon — no external demo links for now.</p>
             </div>
-            <button type="button" id="wip-dismiss" autofocus class="w-full rounded-lg bg-k-violet px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-600 focus:outline-none focus:ring-2 focus:ring-k-indigo focus:ring-offset-2 focus:ring-offset-[#0e1019] transition-colors">Got it</button>
+            <button type="button" id="launch-wip-dismiss" class="w-full rounded-lg bg-k-violet px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-600 focus:outline-none focus:ring-2 focus:ring-k-indigo focus:ring-offset-2 focus:ring-offset-[#0e1019] transition-colors">Got it</button>
         </div>
     </dialog>
 
     <script>
         (function () {
-            var modal = document.getElementById('wip-modal');
-            var btn = document.getElementById('wip-dismiss');
-            if (modal && typeof modal.showModal === 'function') {
+            var launchBtn = document.getElementById('launch-kepler');
+            var modal = document.getElementById('launch-wip-modal');
+            var dismiss = document.getElementById('launch-wip-dismiss');
+            if (!launchBtn || !modal || typeof modal.showModal !== 'function') return;
+            launchBtn.addEventListener('click', function () {
                 modal.showModal();
-                btn.addEventListener('click', function () { modal.close(); });
-            }
+                if (dismiss) dismiss.focus();
+            });
+            if (dismiss) dismiss.addEventListener('click', function () { modal.close(); });
         })();
     </script>
 </body>
