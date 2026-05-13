@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kepler — AI ASIC Design</title>
+    <link rel="canonical" href="https://surgeace.github.io/Kepler-Landing/">
+    <meta property="og:url" content="https://surgeace.github.io/Kepler-Landing/">
+    <meta property="og:title" content="Kepler — AI ASIC Design">
+    <meta name="twitter:card" content="summary_large_image">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -15,11 +17,43 @@
     </script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Inter',sans-serif;background:#08090f;color:#e4e4e7;overflow-x:hidden}
+        body{font-family:'Inter',sans-serif;background:#08090f;color:#e4e4e7;overflow-x:hidden;min-height:100dvh}
         ::selection{background:#7C3AED;color:#fff}
+        #wip-modal::backdrop{background:rgba(0,0,0,0.65);backdrop-filter:blur(4px)}
+        #wip-modal[open]{animation:fadeIn 0.2s ease-out}
+        @keyframes fadeIn{from{opacity:0;transform:scale(0.98)}to{opacity:1;transform:scale(1)}}
     </style>
 </head>
-<body>
-    <p>Kepler Landing Page - Backup placeholder. Full content in kepler_landing_demo.html</p>
+<body class="min-h-dvh flex flex-col items-center justify-center px-6 bg-k-bg text-k-text">
+    <main class="text-center max-w-md">
+        <p class="font-mono text-sm text-k-dim tracking-wide uppercase mb-3">Kepler</p>
+        <h1 class="text-2xl sm:text-3xl font-semibold text-k-text mb-2">Landing page</h1>
+        <p class="text-k-dim text-sm leading-relaxed mb-5">Placeholder — full experience coming later.</p>
+        <p class="text-k-dim text-xs leading-relaxed">
+            Public preview:
+            <a href="https://surgeace.github.io/Kepler-Landing/" class="text-k-indigo hover:text-k-cyan underline-offset-2 hover:underline font-mono">surgeace.github.io/Kepler-Landing</a>
+        </p>
+    </main>
+
+    <dialog id="wip-modal" class="max-w-[min(100%,22rem)] w-full rounded-xl border border-k-border bg-k-s1 p-0 text-k-text shadow-2xl shadow-violet-950/40">
+        <div class="p-6 flex flex-col gap-4">
+            <div>
+                <p class="font-semibold text-lg text-k-text mb-1">Work in progress</p>
+                <p class="text-sm text-k-dim leading-relaxed">This site is still under construction and will be revealed soon.</p>
+            </div>
+            <button type="button" id="wip-dismiss" autofocus class="w-full rounded-lg bg-k-violet px-4 py-2.5 text-sm font-medium text-white hover:bg-violet-600 focus:outline-none focus:ring-2 focus:ring-k-indigo focus:ring-offset-2 focus:ring-offset-[#0e1019] transition-colors">Got it</button>
+        </div>
+    </dialog>
+
+    <script>
+        (function () {
+            var modal = document.getElementById('wip-modal');
+            var btn = document.getElementById('wip-dismiss');
+            if (modal && typeof modal.showModal === 'function') {
+                modal.showModal();
+                btn.addEventListener('click', function () { modal.close(); });
+            }
+        })();
+    </script>
 </body>
 </html>
