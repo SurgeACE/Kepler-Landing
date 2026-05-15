@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kepler — AI ASIC Design</title>
+    <script src="https://cdn.tailwindcss.com" onerror="document.documentElement.classList.add('no-tw')"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" onerror="document.documentElement.classList.add('no-gsap')"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" onerror=""></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']},colors:{k:{bg:'#08090f',s1:'#0e1019',s2:'#141622',violet:'#7C3AED',indigo:'#A78BFA',cyan:'#06B6D4',text:'#e4e4e7',dim:'#71717a',border:'rgba(124,58,237,0.12)'}}}}}
+    </script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Inter',sans-serif;background:#08090f;color:#e4e4e7;overflow-x:hidden}
+        ::selection{background:#7C3AED;color:#fff}
+        .glow{position:fixed;pointer-events:none;border-radius:50%;filter:blur(120px);opacity:.1;z-index:0}
+        .glow-a{width:600px;height:600px;background:#7C3AED;top:-20%;left:-10%;animation:drift 20s ease-in-out infinite}
+        .glow-b{width:400px;height:400px;background:#06B6D4;bottom:-10%;right:-5%;animation:drift 25s ease-in-out infinite reverse}
+        @keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(60px,40px)}}
+        .nav-hidden{transform:translateY(-120%)}
+        nav{transition:transform .35s cubic-bezier(.4,0,.2,1),background .3s}
+        #cursor-dot{position:fixed;width:8px;height:8px;background:#7C3AED;border-radius:50%;pointer-events:none;z-index:9999;mix-blend-mode:screen;transition:transform .15s,opacity .2s;opacity:0}
+        body:hover #cursor-dot{opacity:1}
+        #particles{position:fixed;inset:0;z-index:0;pointer-events:none}
+        #globe-canvas{position:fixed;inset:0;z-index:1;pointer-events:none}
+        #streams-canvas{position:fixed;inset:0;z-index:2;pointer-events:none}
+        .glass{background:rgba(14,16,25,.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(124,58,237,.08)}
+
+        /* ===== Circuit scroll rail ===== */
+        .circuit-rail{position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:90;display:flex;flex-direction:column;align-items:center;gap:0;width:36px}
+        .rail-segment{width:2px;height:32px;background:rgba(124,58,237,.1);transition:background .4s}
+        .rail-node{width:14px;height:14px;border-radius:50%;border:2px solid rgba(124,58,237,.15);background:rgba(8,9,15,.9);position:relative;cursor:pointer;transition:all .35s;display:flex;align-items:center;justify-content:center;z-index:2}
+        .rail-node::after{content:'';width:4px;height:4px;border-radius:50%;background:rgba(124,58,237,.2);transition:all .35s}
+        .rail-node.active{border-color:#7C3AED;box-shadow:0 0 12px rgba(124,58,237,.35)}
+        .rail-node.active::after{background:#7C3AED;box-shadow:0 0 6px rgba(124,58,237,.6)}
+        .rail-segment.active{background:linear-gradient(to bottom,#7C3AED,#06B6D4);box-shadow:0 0 4px rgba(124,58,237,.2)}
+        .rail-label{position:absolute;right:22px;font-size:9px;color:rgba(124,58,237,.3);letter-spacing:.05em;white-space:nowrap;opacity:0;transform:translateX(5px);transition:all .25s;pointer-events:none;font-family:'JetBrains Mono',monospace}
+        .rail-node:hover .rail-label,.rail-node.active .rail-label{opacity:1;transform:translateX(0);color:#A78BFA}
+
+        /* Reveal */
+        .reveal-left{opacity:0;transform:translateX(-50px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+        .reveal-right{opacity:0;transform:translateX(50px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+        .reveal-up{opacity:0;transform:translateY(40px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+        .reveal-scale{opacity:0;transform:scale(.93);transition:opacity .6s,transform .6s cubic-bezier(.16,1,.3,1)}
+        .revealed{opacity:1!important;transform:translate(0) scale(1)!important}
+
+        /* ===== Demo terminal ===== */
+        .demo-window{position:relative;overflow:hidden}
+        #demo-terminal{font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(124,58,237,.15) transparent}
+        #demo-terminal::-webkit-scrollbar{width:3px}
+        #demo-terminal::-webkit-scrollbar-thumb{background:rgba(124,58,237,.15);border-radius:2px}
+        .t-green{color:#34d399}.t-cyan{color:#06B6D4}.t-yellow{color:#fbbf24}.t-dim{color:#52525b}.t-white{color:#e4e4e7}.t-violet{color:#A78BFA}.t-rose{color:#fb7185}.t-art{color:#3b4763}
+        .t-line{opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s}
+        .t-line.show{opacity:1;transform:translateY(0)}
+        .summary-card{opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s}
+        .summary-card.show{opacity:1;transform:translateY(0)}
+        .stat-bar{height:3px;border-radius:2px;background:rgba(124,58,237,.12);overflow:hidden}
+        .stat-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#7C3AED,#34d399);width:0;transition:width 1.5s cubic-bezier(.4,0,.2,1)}
+
+        /* Launch button */
+        .launch-btn{display:inline-flex;align-items:center;gap:10px;padding:12px 32px;border-radius:14px;font-size:13px;font-weight:600;cursor:pointer;transition:all .3s;border:1px solid rgba(124,58,237,.3);background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(6,182,212,.08));color:#e4e4e7;letter-spacing:.03em}
+        .launch-btn:hover{background:linear-gradient(135deg,rgba(124,58,237,.22),rgba(6,182,212,.14));border-color:rgba(124,58,237,.5);transform:translateY(-2px);box-shadow:0 8px 24px rgba(124,58,237,.2)}
+        .launch-btn svg{width:16px;height:16px}
+
+        /* Replay */
+        .replay-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;border-radius:8px;font-size:10px;cursor:pointer;transition:all .25s;border:1px solid rgba(124,58,237,.15);background:rgba(124,58,237,.05);color:#A78BFA}
+        .replay-btn:hover{background:rgba(124,58,237,.12);border-color:rgba(124,58,237,.3)}
+
+        /* Toolsuite loader */
+        .loader-ring{width:32px;height:32px;border:2px solid rgba(124,58,237,.1);border-top-color:#7C3AED;border-radius:50%;animation:spin .8s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .loader-dots span{display:inline-block;animation:ldot 1.4s infinite;opacity:.2}
+        .loader-dots span:nth-child(2){animation-delay:.2s}
+        .loader-dots span:nth-child(3){animation-delay:.4s}
+        @keyframes ldot{0%,60%,100%{opacity:.2}30%{opacity:1}}
+
+        /* ===== Artifact panel (inside demo window) ===== */
+        .artifact-panel{position:absolute;top:0;right:0;width:240px;height:100%;background:rgba(8,9,15,.94);border-left:1px solid rgba(124,58,237,.1);transform:translateX(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);z-index:5;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:10px;scrollbar-width:thin;scrollbar-color:rgba(124,58,237,.1) transparent}
+        .artifact-panel.open{transform:translateX(0)}
+        .artifact-panel::-webkit-scrollbar{width:3px}
+        .artifact-panel::-webkit-scrollbar-thumb{background:rgba(124,58,237,.1);border-radius:2px}
+        .artifact-tab{position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:6;width:22px;height:52px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.12);border-right:none;border-radius:6px 0 0 6px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:all .3s}
+        .artifact-tab.visible{opacity:1}
+        .artifact-tab.shifted{right:240px}
+        .artifact-tab svg{width:10px;height:10px;color:#A78BFA;transition:transform .3s}
+        .artifact-tab.shifted svg{transform:rotate(180deg)}
+        .file-entry{display:flex;align-items:center;gap:5px;padding:3px 12px;color:#71717a;transition:color .15s}
+        .file-entry:hover{color:#e4e4e7}
+        .file-entry.created{color:#34d399}
+        .folder-entry{display:flex;align-items:center;gap:5px;padding:4px 12px;color:#A78BFA;font-weight:500}
+
+        /* Pipeline */
+        .pipeline-step{position:relative;padding-left:2.2rem}
+        .pipeline-step::before{content:'';position:absolute;left:10px;top:24px;bottom:-4px;width:1px;background:linear-gradient(to bottom,rgba(124,58,237,.25),rgba(6,182,212,.08))}
+        .pipeline-step:last-child::before{display:none}
+        .step-dot{position:absolute;left:3px;top:5px;width:16px;height:16px;border-radius:50%;border:2px solid rgba(52,211,153,.5);display:flex;align-items:center;justify-content:center;background:rgba(52,211,153,.04);transition:all .4s}
+        .pipeline-step.lit .step-dot{border-color:#34d399;box-shadow:0 0 10px rgba(52,211,153,.3);background:rgba(52,211,153,.08)}
+        .pipeline-step.lit .step-dot svg{filter:drop-shadow(0 0 3px rgba(52,211,153,.6))}
+        @keyframes pulseDot{0%,100%{box-shadow:0 0 0 0 rgba(52,211,153,.2)}50%{box-shadow:0 0 0 6px rgba(52,211,153,0)}}
+        .pipeline-step.lit .step-dot{animation:pulseDot 2s ease-in-out infinite}
+
+        /* Signal trace animation on pipeline connectors */
+        .pipeline-step::after{content:'';position:absolute;left:10px;top:24px;width:1px;height:0;background:linear-gradient(to bottom,#34d399,transparent);transition:height 1s ease-out;z-index:1}
+        .pipeline-step.lit::after{height:calc(100% - 20px)}
+        .pipeline-step:last-child::after{display:none}
+
+        /* Features */
+        .feat-card{position:relative;overflow:hidden}
+        .feat-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top left,rgba(124,58,237,.05),transparent 70%);opacity:0;transition:opacity .4s}
+        .feat-card:hover::before{opacity:1}
+        .feat-num{position:absolute;top:10px;right:14px;font-size:42px;font-weight:700;color:rgba(124,58,237,.035);line-height:1}
+
+        /* Chat widget */
+        #chat-widget{position:fixed;bottom:24px;right:24px;z-index:100}
+        #chat-bubble{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#06B6D4);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(124,58,237,.25);transition:transform .2s,box-shadow .2s}
+        #chat-bubble:hover{transform:scale(1.08);box-shadow:0 6px 28px rgba(124,58,237,.4)}
+        #chat-panel{position:absolute;bottom:62px;right:0;width:340px;max-height:440px;border-radius:16px;overflow:hidden;display:none;flex-direction:column;opacity:0;transform:translateY(10px) scale(.96);transition:opacity .25s,transform .25s}
+        #chat-panel.open{display:flex;opacity:1;transform:translateY(0) scale(1)}
+        .dot{width:5px;height:5px;border-radius:50%;background:#A78BFA;animation:bdot 1.4s infinite ease-in-out}
+        .dot:nth-child(2){animation-delay:.15s}.dot:nth-child(3){animation-delay:.3s}
+        @keyframes bdot{0%,60%,100%{transform:translateY(0);opacity:.3}30%{transform:translateY(-5px);opacity:1}}
+        .stream-cursor::after{content:'▋';color:#06B6D4;animation:blink .6s step-end infinite}
+        @keyframes blink{50%{opacity:0}}
+
+        /* ===== HERO: Planet + Rocket ===== */
+        .planet-system{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:200px;height:140px;z-index:1}
+        .planet{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:160px;height:50px;border-radius:50%;background:radial-gradient(ellipse at 40% 30%,rgba(124,58,237,.08),rgba(6,182,212,.04) 60%,transparent 100%);border-top:1px solid rgba(124,58,237,.1);overflow:hidden}
+        .planet::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(124,58,237,.06),transparent);border-radius:50%}
+        .planet-ring{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);width:200px;height:24px;border:1px solid rgba(124,58,237,.06);border-radius:50%;pointer-events:none}
+        .planet-surface{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:80px;height:8px;border-radius:50%;background:rgba(124,58,237,.04);filter:blur(3px)}
+        .rocket-wrap{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);z-index:3}
+        .rocket{font-size:20px;filter:drop-shadow(0 0 8px rgba(124,58,237,.4));line-height:1}
+        .rocket-trail{position:absolute;top:22px;left:50%;transform:translateX(-50%);width:2px;height:40px;background:linear-gradient(to bottom,rgba(251,191,36,.4),rgba(124,58,237,.15),transparent);border-radius:1px;filter:blur(1px)}
+        .rocket-glow{position:absolute;top:18px;left:50%;transform:translateX(-50%);width:8px;height:8px;border-radius:50%;background:rgba(251,191,36,.3);filter:blur(4px)}
+        .atmosphere{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);width:120px;height:60px;border-radius:50%;background:radial-gradient(ellipse,rgba(124,58,237,.05),transparent 70%);pointer-events:none}
+
+        /* ===== Strike animation on "tools" ===== */
+        .strike-word{position:relative;display:inline-block}
+        .strike-word::after{content:'';position:absolute;left:-2px;top:50%;width:0;height:2px;background:linear-gradient(90deg,#fb7185,#f43f5e);border-radius:1px;transition:width 0s}
+        .strike-word.struck::after{width:calc(100% + 4px);transition:width .6s cubic-bezier(.4,0,.2,1)}
+
+        /* ===== Smooth CTA button ===== */
+        .cta-smooth{will-change:transform,box-shadow;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(0);transition:transform .35s cubic-bezier(.4,0,.2,1),box-shadow .35s cubic-bezier(.4,0,.2,1)!important}
+        .cta-smooth:hover{transform:translateY(-1px) translateZ(0)!important}
+
+        @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}.glow{animation:none}.reveal-left,.reveal-right,.reveal-up,.reveal-scale{opacity:1;transform:none}}
+        @media(max-width:640px){#chat-panel{width:calc(100vw - 32px);right:-8px}#demo-terminal{font-size:9px;max-height:220px}.circuit-rail{display:none}.artifact-panel{width:100%}.planet-system{width:140px;height:100px}.planet{width:120px;height:36px}}
+
+        /* Shimmer on "intelligence" */
+        @keyframes shimmer{0%{background-position:200% center}100%{background-position:-200% center}}
+        .shimmer-text{background:linear-gradient(90deg,#7C3AED 0%,#A78BFA 20%,#06B6D4 40%,#fff 50%,#06B6D4 60%,#A78BFA 80%,#7C3AED 100%);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:shimmer 4s linear infinite}
+        @supports not (background-clip:text){.shimmer-text{color:#A78BFA!important;background:none!important}}
+
+        /* Data stream paths */
+        .data-stream{position:fixed;pointer-events:none;z-index:2}
+
+        /* ===== FALLBACK: ensure content visible when JS/CDN fails ===== */
+        /* Auto-reveal after 1.5s if JS never fires */
+        @keyframes auto-reveal{to{opacity:1!important;transform:none!important}}
+        .reveal-left,.reveal-right,.reveal-up,.reveal-scale,.pipeline-step,.hero-el{
+            animation:auto-reveal 0.01s 2s forwards;
+        }
+        .revealed{animation:none}
+
+        /* CDN-fail classes */
+        .no-gsap .hero-el,
+        .no-gsap .reveal-left,
+        .no-gsap .reveal-right,
+        .no-gsap .reveal-up,
+        .no-gsap .reveal-scale,
+        .no-gsap .pipeline-step{opacity:1!important;transform:none!important}
+
+        /* Tailwind CDN fail: inline critical layout */
+        .no-tw *{box-sizing:border-box}
+        .no-tw body{margin:0;font-family:'Inter',system-ui,sans-serif;background:#08090f;color:#e4e4e7}
+        .no-tw section{padding:3rem 1.5rem}
+        .no-tw .max-w-3xl,.no-tw .max-w-5xl,.no-tw .max-w-lg{max-width:800px;margin-left:auto;margin-right:auto}
+        .no-tw .text-center{text-align:center}
+        .no-tw .grid{display:grid;gap:1.25rem}
+        .no-tw .flex{display:flex}
+        .no-tw .items-center{align-items:center}
+        .no-tw .justify-center{justify-content:center}
+        .no-tw .hidden{display:none}
+        .no-tw nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:.75rem 1.5rem;background:rgba(8,9,15,.88)}
+        .no-tw h1{font-size:3rem;font-weight:700;line-height:1.05;margin-bottom:2rem}
+        .no-tw h2{font-size:1.5rem;font-weight:600;margin-bottom:1rem}
+        .no-tw a{color:#A78BFA;text-decoration:none}
+    </style>
+    <noscript><style>
+        .hero-el,.reveal-left,.reveal-right,.reveal-up,.reveal-scale,.pipeline-step{opacity:1!important;transform:none!important}
+        #demo-launch{display:none!important}
+        #demo-body{display:block!important}
+        .circuit-rail{display:none!important}
+    </style></noscript>
+</head>
+<body>
+    <div class="glow glow-a"></div>
+    <div class="glow glow-b"></div>
+    <canvas id="particles"></canvas>
+    <canvas id="globe-canvas"></canvas>
+    <canvas id="streams-canvas"></canvas>
+    <div id="cursor-dot"></div>
+
+    <!-- ===== Circuit scroll rail ===== -->
+    <div class="circuit-rail hidden sm:flex" id="circuit-rail">
+        <div class="rail-node active" data-section="hero-section"><span class="rail-label">HOME</span></div>
+        <div class="rail-segment active"></div>
+        <div class="rail-node" data-section="demo"><span class="rail-label">DEMO</span></div>
+        <div class="rail-segment"></div>
+        <div class="rail-node" data-section="pipeline"><span class="rail-label">PIPELINE</span></div>
+        <div class="rail-segment"></div>
+        <div class="rail-node" data-section="features"><span class="rail-label">FEATURES</span></div>
+    </div>
+
+    <!-- Nav -->
+    <nav id="nav" class="fixed top-0 left-0 right-0 z-50 px-6 py-3">
+        <div class="max-w-5xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-md bg-gradient-to-br from-k-violet to-k-cyan flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <span class="text-sm font-semibold tracking-widest text-k-text/80">KEPLER</span>
+            </div>
+            <div class="flex items-center gap-6 text-xs text-k-dim">
+                <a href="#demo" class="hover:text-k-cyan transition-colors hidden sm:block">Demo</a>
+                <a href="#pipeline" class="hover:text-k-cyan transition-colors hidden sm:block">Pipeline</a>
+                <a href="#features" class="hover:text-k-cyan transition-colors hidden sm:block">Features</a>
+                <a href="https://huggingface.co/spaces/surgeACE/Kepler_AiEDA" target="_blank" class="px-3.5 py-1.5 rounded-lg bg-k-violet/15 border border-k-violet/25 text-k-indigo text-xs font-medium hover:bg-k-violet/25 transition-all">Launch</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section id="hero-section" class="relative min-h-screen flex flex-col items-center justify-center px-6 text-center z-10">
+        <div id="hero-content" class="max-w-3xl">
+            <p class="hero-el text-xs font-mono text-k-cyan/70 tracking-[.3em] uppercase mb-6">RTL → GDS in one conversation</p>
+            <h1 class="hero-el text-5xl sm:text-6xl md:text-7xl font-bold leading-[1.05] mb-8">
+                <span class="text-k-text">Design silicon</span><br>
+                <span class="shimmer-text">with intelligence.</span>
+            </h1>
+            <p class="hero-el text-k-dim text-base sm:text-lg max-w-lg mx-auto mb-12 font-light leading-relaxed">
+                Natural language to verified GDS. Kepler orchestrates the entire ASIC toolchain so you can focus on design, not <span id="strike-tools" class="strike-word">tools</span>.
+            </p>
+            <div class="hero-el flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a href="https://huggingface.co/spaces/surgeACE/Kepler_AiEDA" target="_blank" class="cta-smooth group px-7 py-3.5 rounded-xl bg-gradient-to-r from-k-violet to-k-cyan text-white text-sm font-medium shadow-lg shadow-k-violet/20 hover:shadow-k-violet/35">
+                    Try Kepler free
+                    <svg class="inline w-4 h-4 ml-1.5 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                </a>
+                <a href="#demo" class="px-7 py-3.5 rounded-xl text-k-dim text-sm hover:text-k-text transition-colors">See it in action →</a>
+            </div>
+        </div>
+        <!-- Planet + Rocket -->
+        <div class="planet-system" id="planet-system">
+            <div class="atmosphere"></div>
+            <div class="planet-ring"></div>
+            <div class="planet">
+                <div class="planet-surface"></div>
+            </div>
+            <div class="rocket-wrap" id="rocket-wrap">
+                <div class="rocket"><svg width="20" height="28" viewBox="0 0 20 28" fill="none"><path d="M10 0C10 0 4 8 4 16c0 3 2 5 6 6 4-1 6-3 6-6C16 8 10 0 10 0z" fill="url(#rg)"/><path d="M7 20l-3 6h2l2-4M13 20l3 6h-2l-2-4" stroke="#7C3AED" stroke-width="1.2" opacity=".6"/><circle cx="10" cy="14" r="2.5" fill="#06B6D4" opacity=".7"/><circle cx="10" cy="14" r="1" fill="#fff" opacity=".5"/><defs><linearGradient id="rg" x1="10" y1="0" x2="10" y2="22"><stop stop-color="#A78BFA"/><stop offset="1" stop-color="#7C3AED"/></linearGradient></defs></svg></div>
+                <div class="rocket-glow"></div>
+                <div class="rocket-trail"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== DEMO ===== -->
+    <section id="demo" class="relative py-14 px-6 z-10">
+        <div class="max-w-3xl mx-auto">
+            <div class="reveal-up">
+                <p class="text-xs font-mono text-k-cyan/60 tracking-[.2em] uppercase mb-3 text-center">Live Demo</p>
+                <h2 class="text-2xl sm:text-3xl font-semibold text-k-text text-center mb-3">Watch the full flow.</h2>
+                <p class="text-sm text-k-dim text-center max-w-md mx-auto mb-8">Kepler takes a 4-bit counter from natural language to foundry-ready GDS.</p>
+            </div>
+
+            <div class="demo-window glass rounded-2xl overflow-hidden reveal-scale" id="demo-container">
+                <!-- Title bar -->
+                <div class="flex items-center gap-2 px-4 py-2.5 border-b border-k-border">
+                    <div class="w-2 h-2 rounded-full bg-red-400/70"></div>
+                    <div class="w-2 h-2 rounded-full bg-amber-400/70"></div>
+                    <div class="w-2 h-2 rounded-full bg-emerald-400/70"></div>
+                    <span class="ml-3 text-[10px] text-k-dim font-mono">kepler — counter_4bit · sky130</span>
+                    <span id="demo-timer" class="ml-auto text-[10px] text-k-dim font-mono">0.0s</span>
+                </div>
+
+                <!-- Launch overlay -->
+                <div id="demo-launch" class="flex flex-col items-center justify-center py-14">
+                    <button id="launch-btn" class="launch-btn" onclick="startLaunch()">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Launch Kepler
+                    </button>
+                </div>
+
+                <!-- Toolsuite loader (hidden) -->
+                <div id="demo-loader" class="flex flex-col items-center justify-center py-12 gap-4" style="display:none">
+                    <div class="loader-ring"></div>
+                    <div class="text-center">
+                        <p id="loader-msg" class="text-xs text-k-indigo font-mono">Initializing toolsuite...</p>
+                        <p class="text-[10px] text-k-dim mt-1 loader-dots"><span>.</span><span>.</span><span>.</span></p>
+                    </div>
+                </div>
+
+                <!-- Terminal + artifact panel (hidden) -->
+                <div id="demo-body" class="relative" style="display:none">
+                    <div id="demo-terminal" class="p-4"></div>
+                    <div id="demo-summary" class="summary-card px-4 pb-4">
+                        <div class="glass rounded-xl p-3 border border-emerald-500/15">
+                            <div class="flex items-center gap-2 mb-2">
+                                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <span class="text-xs font-medium text-k-text">Design Complete — counter_4bit.gds</span>
+                            </div>
+                            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center mb-2">
+                                <div><p class="text-[11px] font-bold text-k-text">18</p><p class="text-[8px] text-k-dim">Cells</p></div>
+                                <div><p class="text-[11px] font-bold text-k-text">412µm²</p><p class="text-[8px] text-k-dim">Area</p></div>
+                                <div><p class="text-[11px] font-bold text-k-text">250MHz</p><p class="text-[8px] text-k-dim">Fmax</p></div>
+                                <div><p class="text-[11px] font-bold text-emerald-400">98.4%</p><p class="text-[8px] text-k-dim">Coverage</p></div>
+                                <div><p class="text-[11px] font-bold text-emerald-400">0</p><p class="text-[8px] text-k-dim">DRC</p></div>
+                                <div><p class="text-[11px] font-bold text-emerald-400">14/14</p><p class="text-[8px] text-k-dim">Gates</p></div>
+                            </div>
+                            <div class="stat-bar"><div id="progress-fill" class="stat-fill"></div></div>
+                            <p class="text-[8px] text-k-dim mt-1.5 text-center">RTL → GDS completed in <span id="final-time">20</span>s</p>
+                        </div>
+                    </div>
+                    <div id="demo-replay-wrap" class="flex justify-center pb-3" style="display:none">
+                        <button class="replay-btn" onclick="replayDemo()">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Replay
+                        </button>
+                    </div>
+                    <!-- Artifact panel (inside demo window) -->
+                    <div id="artifact-panel" class="artifact-panel">
+                        <div class="flex items-center justify-between px-3 py-2.5 border-b border-k-border sticky top-0 bg-[rgba(8,9,15,.96)] z-2">
+                            <div class="flex items-center gap-1.5">
+                                <svg class="w-3 h-3 text-k-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                                <span class="text-[9px] font-medium text-k-text">Artifacts</span>
+                            </div>
+                            <button onclick="closeArtifact()" class="text-k-dim hover:text-k-text transition-colors"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+                        </div>
+                        <div class="py-2">
+                            <div class="folder-entry"><svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>counter_4bit/</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>rtl/counter_4bit.v</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>tb/test_counter_4bit.py</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>formal/counter_4bit.sby</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>synth/netlist.v</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>synth/counter_4bit.sdc</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>pnr/counter_4bit.def</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>pnr/counter_4bit.spef</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>signoff/sta_tt.rpt</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>signoff/sta_ss.rpt</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>signoff/sta_ff.rpt</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>signoff/drc.txt</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>signoff/lvs.txt</div>
+                            <div class="file-entry created"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>gds/counter_4bit.gds</div>
+                            <div class="px-3 pt-3 mt-2 border-t border-k-border">
+                                <p class="text-[9px] text-k-dim"><span class="text-emerald-400 font-medium">14 files</span> · <span class="text-k-cyan font-medium">14/14</span> gates · tape-out ready</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Artifact tab (inside demo window) -->
+                    <button id="artifact-tab" class="artifact-tab" onclick="toggleArtifact()">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== PIPELINE ===== -->
+    <section id="pipeline" class="relative py-16 px-6 z-10">
+        <div class="max-w-4xl mx-auto">
+            <div class="reveal-up">
+                <p class="text-xs font-mono text-k-cyan/60 tracking-[.2em] uppercase mb-3 text-center">The Pipeline</p>
+                <h2 class="text-2xl sm:text-3xl font-semibold text-k-text text-center mb-3">14 sign-off gates. Zero hand-waving.</h2>
+                <p class="text-sm text-k-dim text-center max-w-xl mx-auto mb-12">Every design passes through rigorous checks. Each gate must be GREEN before advancing.</p>
+            </div>
+            <div class="grid lg:grid-cols-2 gap-x-16 gap-y-1 max-w-3xl mx-auto">
+                <div class="space-y-0.5 reveal-left">
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">RTL Generation</h4><p class="text-xs text-k-dim mt-0.5">NL → Verilog-2001. Latch-free, explicit resets.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Lint (Verilator)</h4><p class="text-xs text-k-dim mt-0.5">0 errors, 0 warnings, 0 implicit wires.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Simulation (Cocotb)</h4><p class="text-xs text-k-dim mt-0.5">Reset, boundaries, FSM, random ≥128. Coverage ≥95%.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Formal (SymbiYosys)</h4><p class="text-xs text-k-dim mt-0.5">BMC depth≥20, prove &lt;200FF. No X after reset.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">DFT Insertion</h4><p class="text-xs text-k-dim mt-0.5">Scan chain, ATPG ≥97%.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Synthesis (Yosys+ABC)</h4><p class="text-xs text-k-dim mt-0.5">Liberty-based mapping for Sky130/GF180.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Pre-route STA</h4><p class="text-xs text-k-dim mt-0.5">Setup/hold sanity check.</p></div></div>
+                </div>
+                <div class="space-y-0.5 reveal-right">
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Place & Route (OpenROAD)</h4><p class="text-xs text-k-dim mt-0.5">Floorplan → Place → CTS → Route. 45% util.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">CTS (Clock Tree)</h4><p class="text-xs text-k-dim mt-0.5">Skew &lt;50ps. Balanced buffer insertion.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">DRC (Magic)</h4><p class="text-xs text-k-dim mt-0.5">Zero foundry violations.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">LVS (Netgen)</h4><p class="text-xs text-k-dim mt-0.5">Physical matches logical.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Antenna Check</h4><p class="text-xs text-k-dim mt-0.5">Oxide protection. Auto-diode.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">Post-route STA (3 corners)</h4><p class="text-xs text-k-dim mt-0.5">TT · SS · FF on SPEF netlist.</p></div></div>
+                    <div class="pipeline-step"><div class="step-dot"><svg class="w-2 h-2 text-emerald-400" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><div class="pb-4"><h4 class="text-sm font-medium text-k-text">IR Drop + GDS Export</h4><p class="text-xs text-k-dim mt-0.5">IR &lt;5% VDD. Foundry-ready GDSII.</p></div></div>
+                </div>
+            </div>
+            <div class="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-4 reveal-up">
+                <div class="text-center"><p class="text-2xl font-bold text-k-violet">14</p><p class="text-[10px] text-k-dim mt-0.5 uppercase tracking-wider">Sign-off Gates</p></div>
+                <div class="text-center"><p class="text-2xl font-bold text-k-cyan">3</p><p class="text-[10px] text-k-dim mt-0.5 uppercase tracking-wider">STA Corners</p></div>
+                <div class="text-center"><p class="text-2xl font-bold text-emerald-400">95%+</p><p class="text-[10px] text-k-dim mt-0.5 uppercase tracking-wider">Coverage</p></div>
+                <div class="text-center"><p class="text-2xl font-bold text-amber-400">0</p><p class="text-[10px] text-k-dim mt-0.5 uppercase tracking-wider">Violations</p></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FEATURES ===== -->
+    <section id="features" class="relative py-16 px-6 z-10">
+        <div class="max-w-5xl mx-auto">
+            <div class="reveal-up">
+                <p class="text-xs font-mono text-k-cyan/60 tracking-[.2em] uppercase mb-3 text-center">What sets it apart</p>
+                <h2 class="text-2xl sm:text-3xl font-semibold text-k-text text-center mb-3">Intelligent automation, not scripts.</h2>
+                <p class="text-sm text-k-dim text-center max-w-2xl mx-auto mb-12">Traditional EDA requires weeks of TCL scripting and manual iteration. Kepler replaces that with an AI orchestrator that understands intent, fixes errors autonomously, and never claims success without proof.</p>
+            </div>
+            <div class="grid md:grid-cols-2 gap-5">
+                <div class="feat-card glass rounded-2xl p-6 hover:border-k-violet/20 transition-all duration-300 reveal-left"><span class="feat-num">01</span><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-xl bg-k-violet/10 flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4 text-k-violet" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg></div><div><h3 class="text-sm font-semibold text-k-text mb-1.5">Natural Language → Verified RTL</h3><p class="text-xs text-k-dim leading-relaxed mb-2">Describe your design in plain English. Kepler generates Verilog-2001 that's immediately lint-clean — no implicit wires, no latches. Every FF gets explicit reset.</p><div class="flex flex-wrap gap-1.5"><span class="text-[9px] px-2 py-0.5 rounded-full bg-k-violet/10 text-k-indigo">Verilog-2001</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-k-violet/10 text-k-indigo">Latch-free</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-k-violet/10 text-k-indigo">Lint-clean</span></div></div></div></div>
+                <div class="feat-card glass rounded-2xl p-6 hover:border-k-violet/20 transition-all duration-300 reveal-right"><span class="feat-num">02</span><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-xl bg-k-cyan/10 flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4 text-k-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></div><div><h3 class="text-sm font-semibold text-k-text mb-1.5">Autonomous Error Recovery</h3><p class="text-xs text-k-dim leading-relaxed mb-2">Timing violation, DRC error, LVS mismatch — Kepler diagnoses root cause, applies targeted fix, re-runs verification. Loop until all gates pass.</p><div class="flex flex-wrap gap-1.5"><span class="text-[9px] px-2 py-0.5 rounded-full bg-k-cyan/10 text-k-cyan">Auto-diagnose</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-k-cyan/10 text-k-cyan">Iterate-to-pass</span></div></div></div></div>
+                <div class="feat-card glass rounded-2xl p-6 hover:border-k-violet/20 transition-all duration-300 reveal-left"><span class="feat-num">03</span><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><div><h3 class="text-sm font-semibold text-k-text mb-1.5">Multi-Corner Timing Closure</h3><p class="text-xs text-k-dim leading-relaxed mb-2">Post-route SPEF-annotated STA across TT, SS, FF corners. Setup/hold fixed with buffer insertion and gate sizing.</p><div class="flex flex-wrap gap-1.5"><span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">TT 1.80V</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">SS 1.60V</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">FF 1.95V</span></div></div></div></div>
+                <div class="feat-card glass rounded-2xl p-6 hover:border-k-violet/20 transition-all duration-300 reveal-right"><span class="feat-num">04</span><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg></div><div><h3 class="text-sm font-semibold text-k-text mb-1.5">Open PDK, No Vendor Lock-in</h3><p class="text-xs text-k-dim leading-relaxed mb-2">Sky130 (130nm) and GF180MCU (180nm). No licenses, no seat fees. Entire toolchain is FOSS.</p><div class="flex flex-wrap gap-1.5"><span class="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">Sky130</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">GF180MCU</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400">100% FOSS</span></div></div></div></div>
+                <div class="feat-card glass rounded-2xl p-6 hover:border-k-violet/20 transition-all duration-300 reveal-left"><span class="feat-num">05</span><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-xl bg-rose-500/10 flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div><div><h3 class="text-sm font-semibold text-k-text mb-1.5">Proof, Not Promises</h3><p class="text-xs text-k-dim leading-relaxed mb-2">Every gate backed by tool output — raw logs alongside the final GDS. No summaries, no estimates.</p><div class="flex flex-wrap gap-1.5"><span class="text-[9px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400">Tool logs</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400">Auditable</span></div></div></div></div>
+                <div class="feat-card glass rounded-2xl p-6 hover:border-k-violet/20 transition-all duration-300 reveal-right"><span class="feat-num">06</span><div class="flex items-start gap-3"><div class="w-9 h-9 rounded-xl bg-sky-500/10 flex items-center justify-center flex-shrink-0"><svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg></div><div><h3 class="text-sm font-semibold text-k-text mb-1.5">Shuttle-Ready Output</h3><p class="text-xs text-k-dim leading-relaxed mb-2">TinyTapeout tt_um_* naming, info.yaml, I/O ports, CI-grade DRC/LVS. Foundry-spec GDSII for custom runs.</p><div class="flex flex-wrap gap-1.5"><span class="text-[9px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400">TinyTapeout</span><span class="text-[9px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400">GDSII</span></div></div></div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="relative py-16 px-6 z-10 text-center">
+        <div class="max-w-lg mx-auto reveal-up">
+            <h2 class="text-2xl sm:text-3xl font-semibold text-k-text mb-3">Start designing.</h2>
+            <p class="text-k-dim text-sm mb-6">Open source. Sky130 & GF180 PDK. Free on HuggingFace.</p>
+            <a href="https://huggingface.co/spaces/surgeACE/Kepler_AiEDA" target="_blank" class="cta-smooth inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-gradient-to-r from-k-violet to-k-cyan text-white text-sm font-medium shadow-lg shadow-k-violet/20 hover:shadow-k-violet/40">
+                Launch Kepler
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+        </div>
+    </section>
+
+    <footer class="border-t border-k-border py-5 px-6 text-center text-k-dim text-[10px] z-10 relative">Kepler AI EDA — Open Source · SurgeACE</footer>
+
+    <!-- ===== CHAT WIDGET ===== -->
+    <div id="chat-widget">
+        <div id="chat-bubble" onclick="toggleChat()" aria-label="Chat with Kepler AI">
+            <svg id="bubble-icon" class="w-5 h-5 text-white transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+        </div>
+        <div id="chat-panel" class="glass shadow-2xl shadow-k-violet/10">
+            <div class="flex items-center justify-between px-4 py-2.5 border-b border-k-border">
+                <div class="flex items-center gap-2"><div class="w-5 h-5 rounded-md bg-gradient-to-br from-k-violet to-k-cyan flex items-center justify-center"><svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div><span class="text-xs font-medium text-k-text">Kepler AI</span><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span></div>
+                <button onclick="toggleChat()" class="text-k-dim hover:text-k-text transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </div>
+            <div id="widget-messages" class="flex-1 overflow-y-auto p-4 space-y-3" style="max-height:320px">
+                <div class="flex items-start gap-2"><div class="w-5 h-5 rounded-md bg-gradient-to-br from-k-violet to-k-cyan flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div><div class="text-xs text-k-text/80 leading-relaxed"><span id="greeting-text"></span><span id="greeting-cursor" class="stream-cursor"></span></div></div>
+            </div>
+            <div class="px-3 py-2.5 border-t border-k-border">
+                <form id="chat-form" class="flex items-center gap-2" onsubmit="return handleSend(event)">
+                    <input id="chat-input" type="text" placeholder="Ask about chip design..." class="flex-1 bg-k-s2 border border-k-border rounded-lg px-3 py-2 text-xs text-k-text placeholder:text-k-dim/50 outline-none focus:border-k-violet/30 transition-colors" autocomplete="off">
+                    <button type="submit" class="w-8 h-8 rounded-lg bg-k-violet/20 hover:bg-k-violet/30 flex items-center justify-center transition-colors"><svg class="w-3.5 h-3.5 text-k-indigo" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg></button>
+                </form>
+                <p class="text-[8px] text-k-dim/40 mt-1 text-center">Powered by Kepler Knowledge Base</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ===== PARTICLES =====
+    (function(){const c=document.getElementById('particles'),x=c.getContext('2d');let w,h,p=[];
+    function r(){w=c.width=innerWidth;h=c.height=innerHeight;p=[];for(let i=0;i<45;i++)p.push({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1+.3,dx:(Math.random()-.5)*.12,dy:(Math.random()-.5)*.12,o:Math.random()*.15+.05});}
+    function d(){x.clearRect(0,0,w,h);p.forEach(pt=>{pt.x+=pt.dx;pt.y+=pt.dy;if(pt.x<0)pt.x=w;if(pt.x>w)pt.x=0;if(pt.y<0)pt.y=h;if(pt.y>h)pt.y=0;x.beginPath();x.arc(pt.x,pt.y,pt.r,0,Math.PI*2);x.fillStyle=`rgba(124,58,237,${pt.o})`;x.fill();});
+    for(let i=0;i<p.length;i++)for(let j=i+1;j<p.length;j++){const dx=p[i].x-p[j].x,dy=p[i].y-p[j].y,dist=Math.sqrt(dx*dx+dy*dy);if(dist<120){x.beginPath();x.moveTo(p[i].x,p[i].y);x.lineTo(p[j].x,p[j].y);x.strokeStyle=`rgba(124,58,237,${.035*(1-dist/120)})`;x.stroke();}}
+    requestAnimationFrame(d);}r();d();addEventListener('resize',r);})();
+
+    // ===== 3D CIRCUIT EARTH — bottom-left, low orbit horizon view =====
+    (function(){
+        const gc=document.getElementById('globe-canvas'),gx=gc.getContext('2d');
+        let gw,gh,rot=0,R=500;
+        const CX=()=>gw*0.08;
+        const CY=()=>gh*1.12;
+
+        const continents=[];
+        for(let c=0;c<8;c++){
+            const cLat=(Math.random()-0.5)*Math.PI*0.75;
+            const cLon=Math.random()*Math.PI*2;
+            const size=0.2+Math.random()*0.3;
+            const nodes=[];
+            const count=15+Math.floor(Math.random()*20);
+            for(let i=0;i<count;i++){
+                nodes.push({lat:cLat+(Math.random()-0.5)*size,lon:cLon+(Math.random()-0.5)*size,r:1.2+Math.random()*2.8,bright:0.5+Math.random()*0.5});
+            }
+            const edges=[];
+            for(let i=0;i<nodes.length;i++){
+                const dists=[];
+                for(let j=0;j<nodes.length;j++){
+                    if(i===j)continue;
+                    const dl=nodes[i].lat-nodes[j].lat,dn=nodes[i].lon-nodes[j].lon;
+                    dists.push({j,d:Math.sqrt(dl*dl+dn*dn)});
+                }
+                dists.sort((a,b)=>a.d-b.d);
+                for(let n=0;n<Math.min(2,dists.length);n++){
+                    if(dists[n].d<size*0.65)edges.push([i,dists[n].j]);
+                }
+            }
+            continents.push({nodes,edges});
+        }
+
+        const packets=[];
+        for(let i=0;i<30;i++){
+            const ci=Math.floor(Math.random()*continents.length);
+            const cont=continents[ci];
+            if(!cont.edges.length)continue;
+            // Each packet: current edge, next edge queued, smooth t with easing
+            const ei=Math.floor(Math.random()*cont.edges.length);
+            packets.push({ci,ei,t:Math.random(),speed:0.002+Math.random()*0.003,
+                // Smoothing: store prev/next projected positions for lerp
+                px:0,py:0,tx:0,ty:0,smooth:0,fade:0.6+Math.random()*0.4});
+        }
+        // Smooth easing — ease-in-out cubic
+        function ease(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+
+        function proj(lat,lon){
+            const cosLat=Math.cos(lat),sinLat=Math.sin(lat);
+            const cosLon=Math.cos(lon+rot),sinLon=Math.sin(lon+rot);
+            const x=R*cosLat*sinLon,z=R*cosLat*cosLon,y=R*sinLat;
+            const s=1200/(1200+z);
+            return{sx:CX()+x*s,sy:CY()-y*s,z,vis:z>-R*0.25,d:Math.max(0,(z+R)/(2*R))};
+        }
+
+        function resize(){gw=gc.width=innerWidth;gh=gc.height=innerHeight;R=Math.max(gw,gh)*0.9;}
+
+        function draw(){
+            gx.clearRect(0,0,gw,gh);
+            const time=performance.now()*0.001;
+            // Animated atmosphere glow — breathes with sine
+            const atmPulse=0.97+0.06*Math.sin(time*0.4);
+            const atmShift=Math.sin(time*0.25)*R*0.02;
+            const ag=gx.createRadialGradient(CX()+atmShift,CY()-atmShift*0.5,R*0.8*atmPulse,CX()+atmShift,CY()-atmShift*0.5,R*1.35*atmPulse);
+            ag.addColorStop(0,'rgba(124,58,237,0)');
+            ag.addColorStop(0.5,`rgba(124,58,237,${0.018+0.008*Math.sin(time*0.3)})`);
+            ag.addColorStop(0.75,`rgba(6,182,212,${0.015+0.006*Math.sin(time*0.5)})`);
+            ag.addColorStop(1,'rgba(0,0,0,0)');
+            gx.fillStyle=ag;
+            gx.fillRect(0,0,gw,gh);
+            // Globe body — more transparent
+            gx.save();
+            gx.beginPath();gx.arc(CX(),CY(),R,0,Math.PI*2);
+            const bg=gx.createRadialGradient(CX()+R*0.15,CY()-R*0.2,R*0.05,CX(),CY(),R);
+            bg.addColorStop(0,'rgba(22,24,38,0.45)');
+            bg.addColorStop(0.5,'rgba(14,16,25,0.35)');
+            bg.addColorStop(1,'rgba(8,9,15,0.3)');
+            gx.fillStyle=bg;gx.fill();
+            // Animated rim glow — pulses
+            const rimPulse=1.0+0.03*Math.sin(time*0.6);
+            const rg=gx.createRadialGradient(CX(),CY(),R*0.88*rimPulse,CX(),CY(),R*1.02*rimPulse);
+            rg.addColorStop(0,'rgba(0,0,0,0)');
+            rg.addColorStop(0.5,`rgba(124,58,237,${0.05+0.02*Math.sin(time*0.35)})`);
+            rg.addColorStop(0.85,`rgba(6,182,212,${0.07+0.03*Math.sin(time*0.45)})`);
+            rg.addColorStop(1,'rgba(6,182,212,0)');
+            gx.beginPath();gx.arc(CX(),CY(),R*1.02*rimPulse,0,Math.PI*2);
+            gx.fillStyle=rg;gx.fill();
+            // Clip to globe
+            gx.beginPath();gx.arc(CX(),CY(),R-1,0,Math.PI*2);gx.clip();
+            // Grid lines
+            gx.globalAlpha=0.18;
+            for(let i=1;i<=8;i++){
+                const lat=(i/9-0.5)*Math.PI;
+                gx.beginPath();let s=false;
+                for(let j=0;j<=90;j++){
+                    const lon=(j/90)*Math.PI*2;const p=proj(lat,lon);
+                    if(!p.vis||p.d<0.08){s=false;continue;}
+                    if(!s){gx.moveTo(p.sx,p.sy);s=true;}else gx.lineTo(p.sx,p.sy);
+                }
+                gx.strokeStyle='rgba(124,58,237,0.1)';gx.lineWidth=0.4;gx.stroke();
+            }
+            for(let i=0;i<16;i++){
+                const lon=(i/16)*Math.PI*2;
+                gx.beginPath();let s=false;
+                for(let j=0;j<=50;j++){
+                    const lat=(j/50-0.5)*Math.PI;const p=proj(lat,lon);
+                    if(!p.vis||p.d<0.08){s=false;continue;}
+                    if(!s){gx.moveTo(p.sx,p.sy);s=true;}else gx.lineTo(p.sx,p.sy);
+                }
+                gx.strokeStyle='rgba(6,182,212,0.07)';gx.lineWidth=0.4;gx.stroke();
+            }
+            gx.globalAlpha=1;
+            // Circuit traces + nodes
+            continents.forEach(cont=>{
+                cont.edges.forEach(([i,j])=>{
+                    const a=proj(cont.nodes[i].lat,cont.nodes[i].lon),b=proj(cont.nodes[j].lat,cont.nodes[j].lon);
+                    if(!a.vis||!b.vis)return;const avg=(a.d+b.d)/2;if(avg<0.12)return;
+                    gx.beginPath();gx.moveTo(a.sx,a.sy);gx.lineTo(b.sx,b.sy);
+                    gx.strokeStyle=`rgba(124,58,237,${0.35*avg})`;gx.lineWidth=0.8*avg+0.2;gx.stroke();
+                });
+                cont.nodes.forEach(n=>{
+                    const p=proj(n.lat,n.lon);if(!p.vis||p.d<0.1)return;
+                    gx.beginPath();gx.arc(p.sx,p.sy,n.r*3.5*p.d,0,Math.PI*2);
+                    gx.fillStyle=`rgba(124,58,237,${0.06*p.d*n.bright})`;gx.fill();
+                    gx.beginPath();gx.arc(p.sx,p.sy,n.r*p.d,0,Math.PI*2);
+                    gx.fillStyle=`rgba(167,139,250,${0.6*p.d*n.bright})`;gx.fill();
+                    if(n.r>2&&p.d>0.45){gx.beginPath();gx.arc(p.sx,p.sy,1,0,Math.PI*2);gx.fillStyle=`rgba(228,228,231,${0.45*p.d})`;gx.fill();}
+                });
+            });
+            // Data packets — smooth eased movement
+            packets.forEach(pk=>{
+                const cont=continents[pk.ci];if(!cont||pk.ei>=cont.edges.length)return;
+                const[i,j]=cont.edges[pk.ei];
+                pk.t+=pk.speed;
+                // Smooth transition: ease the interpolation factor
+                const et=ease(Math.min(1,Math.max(0,pk.t)));
+                if(pk.t>=1){
+                    // Pick next edge connected to current endpoint for continuous flow
+                    const endNode=j;
+                    const candidates=cont.edges.filter(([a,b],idx)=>idx!==pk.ei&&(a===endNode||b===endNode));
+                    if(candidates.length>0){
+                        const next=candidates[Math.floor(Math.random()*candidates.length)];
+                        pk.ei=cont.edges.indexOf(next);
+                    }else{pk.ei=Math.floor(Math.random()*cont.edges.length);}
+                    pk.t=0;pk.speed=0.002+Math.random()*0.003;
+                }
+                const nA=cont.nodes[i],nB=cont.nodes[j];
+                const lat=nA.lat+(nB.lat-nA.lat)*et,lon=nA.lon+(nB.lon-nA.lon)*et;
+                const p=proj(lat,lon);if(!p.vis||p.d<0.12)return;
+                const f=pk.fade;
+                gx.beginPath();gx.arc(p.sx,p.sy,6*p.d,0,Math.PI*2);gx.fillStyle=`rgba(6,182,212,${0.12*p.d*f})`;gx.fill();
+                gx.beginPath();gx.arc(p.sx,p.sy,2.5*p.d,0,Math.PI*2);gx.fillStyle=`rgba(6,182,212,${0.7*p.d*f})`;gx.fill();
+                gx.beginPath();gx.arc(p.sx,p.sy,1*p.d,0,Math.PI*2);gx.fillStyle=`rgba(255,255,255,${0.35*p.d*f})`;gx.fill();
+            });
+            gx.restore();
+            rot+=0.0012;
+            requestAnimationFrame(draw);
+        }
+        resize();draw();
+        addEventListener('resize',resize);
+    })();
+
+    // ===== DATA STREAM PATHS — random circuit lines curving into globe =====
+    (function(){
+        const sc=document.getElementById('streams-canvas'),sx=sc.getContext('2d');
+        let sw,sh;
+        // Globe target: bottom-left
+        const gx=()=>sw*0.08;
+        const gy=()=>sh*1.12;
+
+        function resize(){sw=sc.width=innerWidth;sh=sc.height=innerHeight;}
+
+        // Each stream: array of control points forming a bezier that ends near globe
+        const streams=[];
+        const STREAM_COUNT=12; // enough for 3-4 visible per viewport height
+
+        function createStream(){
+            // Start from random position along right or top edge
+            const side=Math.random();
+            let sx0,sy0;
+            if(side<0.4){sx0=sw*(0.3+Math.random()*0.7);sy0=-20;} // from top
+            else if(side<0.7){sx0=sw+20;sy0=sh*Math.random();} // from right
+            else{sx0=sw*(0.4+Math.random()*0.6);sy0=sh+20;} // from bottom-right
+
+            // End point: near globe horizon (bottom-left area with some randomness)
+            const ex=gx()+sw*(0.05+Math.random()*0.15);
+            const ey=gy()-sh*(0.15+Math.random()*0.25);
+
+            // Two control points for smooth S-curve toward globe
+            const mx=sx0+(ex-sx0)*(0.3+Math.random()*0.3);
+            const my=sy0+(ey-sy0)*(0.2+Math.random()*0.2);
+            const mx2=ex+(sx0-ex)*(0.1+Math.random()*0.2);
+            const my2=ey+(sy0-ey)*(0.05+Math.random()*0.15);
+
+            return{
+                sx:sx0,sy:sy0,cp1x:mx,cp1y:my,cp2x:mx2,cp2y:my2,ex,ey,
+                t:0, // head position along curve (0-1)
+                speed:0.001+Math.random()*0.002,
+                len:0.08+Math.random()*0.12, // tail length
+                alpha:0.06+Math.random()*0.08,
+                width:0.5+Math.random()*1,
+                hue:Math.random()>0.5?'124,58,237':'6,182,212', // violet or cyan
+                delay:Math.random()*8 // stagger start times (seconds)
+            };
+        }
+
+        function initStreams(){
+            streams.length=0;
+            for(let i=0;i<STREAM_COUNT;i++)streams.push(createStream());
+        }
+
+        // Get point on cubic bezier at t
+        function bezAt(s,t){
+            const u=1-t;
+            return{
+                x:u*u*u*s.sx+3*u*u*t*s.cp1x+3*u*t*t*s.cp2x+t*t*t*s.ex,
+                y:u*u*u*s.sy+3*u*u*t*s.cp1y+3*u*t*t*s.cp2y+t*t*t*s.ey
+            };
+        }
+
+        function draw(){
+            sx.clearRect(0,0,sw,sh);
+            const time=performance.now()*0.001;
+
+            streams.forEach((s,idx)=>{
+                // Staggered start
+                if(time<s.delay)return;
+
+                s.t+=s.speed;
+                // Recycle when fully past end
+                if(s.t-s.len>1.1){
+                    const ns=createStream();
+                    ns.delay=time+Math.random()*3;
+                    streams[idx]=ns;
+                    return;
+                }
+
+                // Draw trail: gradient from head to tail
+                const headT=Math.min(s.t,1);
+                const tailT=Math.max(s.t-s.len,0);
+                const steps=20;
+
+                for(let i=0;i<steps;i++){
+                    const t0=tailT+(headT-tailT)*(i/steps);
+                    const t1=tailT+(headT-tailT)*((i+1)/steps);
+                    if(t0>1)continue;
+                    const p0=bezAt(s,Math.min(t0,1));
+                    const p1=bezAt(s,Math.min(t1,1));
+                    // Fade: brighter at head, dimmer at tail, fade out near globe
+                    const fade=(i/steps); // 0=tail, 1=head
+                    const globeFade=1-Math.max(0,(s.t-0.7)/0.3); // vanish into globe
+                    const a=s.alpha*fade*Math.max(0.1,globeFade);
+
+                    sx.beginPath();
+                    sx.moveTo(p0.x,p0.y);
+                    sx.lineTo(p1.x,p1.y);
+                    sx.strokeStyle=`rgba(${s.hue},${a})`;
+                    sx.lineWidth=s.width*(0.3+0.7*fade);
+                    sx.stroke();
+                }
+
+                // Bright dot at head
+                if(headT<=1){
+                    const h=bezAt(s,headT);
+                    const globeFade=1-Math.max(0,(s.t-0.7)/0.3);
+                    const ha=Math.min(s.alpha*2.5,0.25)*Math.max(0.05,globeFade);
+                    sx.beginPath();
+                    sx.arc(h.x,h.y,s.width+1,0,Math.PI*2);
+                    sx.fillStyle=`rgba(${s.hue},${ha})`;
+                    sx.fill();
+                }
+            });
+
+            requestAnimationFrame(draw);
+        }
+        resize();initStreams();draw();
+        addEventListener('resize',()=>{resize();initStreams();});
+    })();
+
+    // ===== CURSOR =====
+    const dot=document.getElementById('cursor-dot');
+    document.addEventListener('mousemove',e=>{dot.style.left=e.clientX-4+'px';dot.style.top=e.clientY-4+'px';});
+
+    // ===== NAV =====
+    let lastY=0;
+    window.addEventListener('scroll',()=>{const y=window.scrollY;document.getElementById('nav').classList.toggle('nav-hidden',y>lastY&&y>80);document.getElementById('nav').style.background=y>60?'rgba(8,9,15,.88)':'';lastY=y;},{passive:true});
+
+    // ===== SCROLL REVEAL =====
+    const revealEls=document.querySelectorAll('.reveal-left,.reveal-right,.reveal-up,.reveal-scale');
+    const revealObs=new IntersectionObserver(entries=>{entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('revealed');revealObs.unobserve(e.target);}});},{threshold:0.12,rootMargin:'0px 0px -30px 0px'});
+    revealEls.forEach(el=>revealObs.observe(el));
+
+    // ===== CIRCUIT RAIL (scroll indicator) =====
+    const railSections=['hero-section','demo','pipeline','features'];
+    const railNodes=document.querySelectorAll('.rail-node');
+    const railSegs=document.querySelectorAll('.rail-segment');
+    const railObs=new IntersectionObserver(entries=>{
+        entries.forEach(e=>{
+            if(e.isIntersecting){
+                const idx=railSections.indexOf(e.target.id);
+                railNodes.forEach((n,i)=>n.classList.toggle('active',i<=idx));
+                railSegs.forEach((s,i)=>s.classList.toggle('active',i<idx));
+            }
+        });
+    },{threshold:0.25});
+    railSections.forEach(id=>{const el=document.getElementById(id);if(el)railObs.observe(el);});
+    railNodes.forEach(n=>{n.addEventListener('click',()=>{const sec=n.getAttribute('data-section');document.getElementById(sec)?.scrollIntoView({behavior:'smooth'});});});
+
+    // ===== GSAP =====
+    if(typeof gsap!=='undefined'&&typeof ScrollTrigger!=='undefined'){
+    gsap.registerPlugin(ScrollTrigger);
+    gsap.fromTo('.hero-el',{y:50,opacity:0},{y:0,opacity:1,duration:1,stagger:.18,ease:'power3.out',delay:.3});
+    gsap.to('#hero-content',{scrollTrigger:{trigger:'#hero-section',start:'80% top',end:'bottom -20%',scrub:true},y:-30,opacity:0});
+
+    // Rocket launch on scroll — rises from planet and flies upward
+    gsap.to('#rocket-wrap',{scrollTrigger:{trigger:'#hero-section',start:'70% top',end:'bottom top',scrub:true},y:-220,opacity:0,scale:0.6,ease:'power2.in'});
+    // Planet fades as we scroll past hero
+    gsap.to('.planet-system',{scrollTrigger:{trigger:'#hero-section',start:'85% top',end:'bottom top',scrub:true},opacity:0});
+
+    // Strike animation on "tools"
+    setTimeout(()=>{document.getElementById('strike-tools')?.classList.add('struck');},2800);
+
+    // Pipeline steps — animate in with stagger + light up sequentially
+    gsap.fromTo('.pipeline-step',{x:-15,opacity:0},{scrollTrigger:{trigger:'#pipeline',start:'top 80%'},x:0,opacity:1,duration:.4,stagger:.06,ease:'power2.out',onComplete:function(){
+        // Light up steps one by one
+        const steps=document.querySelectorAll('.pipeline-step');
+        steps.forEach((s,i)=>{setTimeout(()=>s.classList.add('lit'),i*120);});
+    }});
+
+    // Feature cards subtle float
+    gsap.utils.toArray('.feat-card').forEach((card,i)=>{
+        gsap.to(card,{scrollTrigger:{trigger:card,start:'top 90%',end:'bottom 10%',scrub:true},y:-6,ease:'none'});
+    });
+    } // end gsap guard
+
+    // ===== DEMO =====
+    const DEMO_LINES=[
+        {c:'violet',t:'$ kepler "Design a 4-bit counter with sync reset for Sky130"',p:'slow'},
+        {c:'dim',t:'',p:'pause'},
+        {c:'cyan',t:'[kepler] Analyzing prompt → counter_4bit',p:'slow'},
+        {c:'dim',t:'  PDK: sky130_fd_sc_hd  ·  Target: 250MHz',p:'med'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'white',t:'─── RTL Generation ───────────────────────',p:'slow'},
+        {c:'dim',t:'  Generating Verilog-2001...',p:'med'},
+        {c:'dim',t:'  Module: counter_4bit (clk, rst_n, en, count[3:0])',p:'med'},
+        {c:'green',t:'  ✓ 22 lines — latch-free, lint-ready',p:'slow'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'white',t:'─── Lint (Verilator) ─────────────────────',p:'med'},
+        {c:'dim',t:'  verilator --lint-only -Wall counter_4bit.v',p:'med'},
+        {c:'green',t:'  ✓ 0 errors · 0 warnings',p:'med'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'white',t:'─── Simulation (Cocotb) ──────────────────',p:'med'},
+        {c:'dim',t:'  test_reset ............ PASS',p:'fast'},
+        {c:'dim',t:'  test_count_enable ..... PASS',p:'fast'},
+        {c:'dim',t:'  test_overflow ......... PASS',p:'fast'},
+        {c:'dim',t:'  test_random_128 ....... PASS',p:'fast'},
+        {c:'dim',t:'  test_back2back ........ PASS',p:'fast'},
+        {c:'cyan',t:'  Coverage: 98.4%  ·  5/5 passed',p:'med'},
+        {c:'green',t:'  ✓ Simulation PASS',p:'med'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'white',t:'─── Formal (SymbiYosys) ──────────────────',p:'med'},
+        {c:'dim',t:'  BMC depth=20 → bounded proof done',p:'fast'},
+        {c:'green',t:'  ✓ All assertions proved',p:'med'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'white',t:'─── Synthesis (Yosys + ABC) ──────────────',p:'med'},
+        {c:'dim',t:'  abc -liberty sky130_fd_sc_hd__tt_025C_1v80.lib',p:'fast'},
+        {c:'cyan',t:'  Cells: 18  ·  Area: 412µm²  ·  WNS: +0.52ns',p:'med'},
+        {c:'green',t:'  ✓ Synthesis PASS',p:'med'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'white',t:'─── Place & Route (OpenROAD) ─────────────',p:'slow'},
+        {c:'dim',t:'  Floorplan 50×50µm · 45% util',p:'med'},
+        {c:'art',t:'  ┌────────────────────────┐',p:'fast'},
+        {c:'art',t:'  │ ┌──┐┌──┐  ┌──┐  ┌──┐  │  Floorplan',p:'fast'},
+        {c:'art',t:'  │ │FF││FF│  │FF│  │FF│  │',p:'fast'},
+        {c:'art',t:'  │ └──┘└──┘  └──┘  └──┘  │',p:'fast'},
+        {c:'art',t:'  │   ┌──┐┌──┐  ┌──┐      │',p:'fast'},
+        {c:'art',t:'  │   │CL││CL│  │BF│      │',p:'fast'},
+        {c:'art',t:'  │   └──┘└──┘  └──┘      │',p:'fast'},
+        {c:'art',t:'  └────────────────────────┘',p:'fast'},
+        {c:'dim',t:'  Global placement... HPWL: 1842',p:'med'},
+        {c:'dim',t:'  Detailed placement... legalized',p:'med'},
+        {c:'dim',t:'  CTS... skew 12ps ✓',p:'med'},
+        {c:'dim',t:'  Detail routing...',p:'med'},
+        {c:'art',t:'  ┌────────────────────────┐',p:'fast'},
+        {c:'art',t:'  │ ═══╤══╤═══════╤══════  │  Routed',p:'fast'},
+        {c:'art',t:'  │ ┌──┤┌─┤─┐ ┌──┤─┐┌──┐  │',p:'fast'},
+        {c:'art',t:'  │ │FF├┤FF├─┤ │FF├─┤│FF│  │',p:'fast'},
+        {c:'art',t:'  │ └──┤└─┤─┘ └──┤─┘└──┘  │',p:'fast'},
+        {c:'art',t:'  │ ───┼──┼──────┼──────── │',p:'fast'},
+        {c:'art',t:'  │ ┌──┤┌─┤─┐ ┌─┤┐        │',p:'fast'},
+        {c:'art',t:'  │ │CL├┤CL├─┤ │BF├─      │',p:'fast'},
+        {c:'art',t:'  │ └──┘└──┘  └──┘        │',p:'fast'},
+        {c:'art',t:'  └────────────────────────┘',p:'fast'},
+        {c:'dim',t:'  Route opt... converged, 0 DRC',p:'med'},
+        {c:'green',t:'  ✓ PnR complete',p:'slow'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'white',t:'─── Sign-off ─────────────────────────────',p:'med'},
+        {c:'dim',t:'  DRC .............. 0 violations  ✓',p:'fast'},
+        {c:'dim',t:'  LVS .............. match         ✓',p:'fast'},
+        {c:'dim',t:'  Antenna .......... clean         ✓',p:'fast'},
+        {c:'dim',t:'  STA TT 1.80V ..... WNS +0.42ns   ✓',p:'med'},
+        {c:'dim',t:'  STA SS 1.60V ..... WNS +0.18ns   ✓',p:'med'},
+        {c:'dim',t:'  STA FF 1.95V ..... WNS +0.61ns   ✓',p:'med'},
+        {c:'dim',t:'  IR drop .......... 2.1% VDD      ✓',p:'med'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'cyan',t:'  Streaming GDS → counter_4bit.gds',p:'slow'},
+        {c:'green',t:'  ✓ 14/14 sign-off gates GREEN',p:'slow'},
+        {c:'dim',t:'',p:'fast'},
+        {c:'violet',t:'  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',p:'slow'},
+        {c:'green',t:'  ✅ TAPE-OUT READY · counter_4bit.gds',p:'slow'},
+    ];
+
+    // Pacing tuned for ~20s total
+    const PACE={slow:480,med:250,fast:90,pause:700};
+    let demoRunning=false,demoTime=0,timerInterval=null;
+    const term=document.getElementById('demo-terminal');
+    const timerEl=document.getElementById('demo-timer');
+
+    const LOADER_MSGS=['Initializing toolsuite...','Loading Verilator + Yosys...','Connecting OpenROAD engine...','Mounting Sky130 PDK...','Ramping up design plan...','Ready.'];
+
+    async function startLaunch(){
+        if(demoRunning)return;
+        document.getElementById('demo-launch').style.display='none';
+        const loader=document.getElementById('demo-loader');
+        loader.style.display='flex';
+        const msgEl=document.getElementById('loader-msg');
+
+        for(let i=0;i<LOADER_MSGS.length;i++){
+            msgEl.textContent=LOADER_MSGS[i];
+            await new Promise(r=>setTimeout(r,i===LOADER_MSGS.length-1?400:550));
+        }
+        loader.style.display='none';
+        runDemo();
+    }
+
+    async function runDemo(){
+        demoRunning=true;
+        const body=document.getElementById('demo-body');
+        body.style.display='block';
+        term.innerHTML='';
+        document.getElementById('demo-summary').classList.remove('show');
+        document.getElementById('demo-replay-wrap').style.display='none';
+        document.getElementById('progress-fill').style.width='0';
+        closeArtifact();
+        document.getElementById('artifact-tab').classList.remove('visible');
+
+        demoTime=0;
+        timerInterval=setInterval(()=>{demoTime+=0.1;timerEl.textContent=demoTime.toFixed(1)+'s';},100);
+
+        for(let i=0;i<DEMO_LINES.length;i++){
+            const line=DEMO_LINES[i];
+            const el=document.createElement('div');
+            el.className='t-line t-'+line.c;
+            el.textContent=line.t||'\u00A0';
+            term.appendChild(el);
+            term.scrollTop=term.scrollHeight;
+            await new Promise(r=>setTimeout(r,PACE[line.p]||200));
+            el.classList.add('show');
+        }
+
+        clearInterval(timerInterval);
+        const finalT=demoTime.toFixed(1);
+        timerEl.textContent=finalT+'s';
+        document.getElementById('final-time').textContent=finalT;
+        await new Promise(r=>setTimeout(r,300));
+        document.getElementById('demo-summary').classList.add('show');
+        await new Promise(r=>setTimeout(r,200));
+        document.getElementById('progress-fill').style.width='100%';
+        await new Promise(r=>setTimeout(r,500));
+        document.getElementById('demo-replay-wrap').style.display='flex';
+
+        document.getElementById('artifact-tab').classList.add('visible');
+        setTimeout(()=>openArtifact(),400);
+        demoRunning=false;
+    }
+
+    function replayDemo(){
+        document.getElementById('demo-launch').style.display='none';
+        document.getElementById('demo-loader').style.display='none';
+        runDemo();
+    }
+
+    // ===== ARTIFACT PANEL (inside demo) =====
+    let artOpen=false;
+    function openArtifact(){artOpen=true;document.getElementById('artifact-panel').classList.add('open');document.getElementById('artifact-tab').classList.add('shifted');}
+    function closeArtifact(){artOpen=false;document.getElementById('artifact-panel').classList.remove('open');document.getElementById('artifact-tab').classList.remove('shifted');}
+    function toggleArtifact(){if(artOpen)closeArtifact();else openArtifact();}
+
+    // ===== CHAT WIDGET =====
+    let chatOpen=false;
+    function toggleChat(){chatOpen=!chatOpen;document.getElementById('chat-panel').classList.toggle('open',chatOpen);document.getElementById('bubble-icon').style.transform=chatOpen?'rotate(90deg)':'';if(chatOpen)document.getElementById('chat-input').focus();}
+    const greetMsg="Hi! I'm Kepler's assistant. Ask me about ASIC design, RTL, synthesis, PnR, or anything chip-related.";
+    let gi=0;const gtEl=document.getElementById('greeting-text'),gcEl=document.getElementById('greeting-cursor');
+    function typeGreeting(){if(gi<greetMsg.length){gtEl.textContent+=greetMsg[gi];gi++;setTimeout(typeGreeting,18);}else if(gcEl){gcEl.remove();}}
+    setTimeout(typeGreeting,1500);
+
+    function escHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+    const wBox=()=>document.getElementById('widget-messages');
+    function addMsg(role,text){const w=document.createElement('div');w.className='flex '+(role==='user'?'justify-end':'items-start gap-2');if(role==='user'){w.innerHTML=`<div class="px-3 py-2 rounded-xl rounded-br-sm bg-k-violet/15 border border-k-violet/20 text-xs text-k-text max-w-[220px]">${escHtml(text)}</div>`;}else{w.innerHTML=`<div class="w-5 h-5 rounded-md bg-gradient-to-br from-k-violet to-k-cyan flex items-center justify-center flex-shrink-0 mt-0.5"><svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div><div class="text-xs text-k-text/80 leading-relaxed max-w-[240px]"><span class="ai-reply"></span><span class="stream-cursor"></span></div>`;}wBox().appendChild(w);wBox().scrollTop=wBox().scrollHeight;return w;}
+    function addTyping(){const d=document.createElement('div');d.id='typing-ind';d.className='flex items-center gap-2';d.innerHTML=`<div class="w-5 h-5 rounded-md bg-gradient-to-br from-k-violet/40 to-k-cyan/40 flex items-center justify-center flex-shrink-0"><svg class="w-2.5 h-2.5 text-white/40" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div><div class="flex gap-1"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;wBox().appendChild(d);wBox().scrollTop=wBox().scrollHeight;}
+    function removeTyping(){const t=document.getElementById('typing-ind');if(t)t.remove();}
+    function streamReply(el,text){const span=el.querySelector('.ai-reply'),cur=el.querySelector('.stream-cursor');let i=0;function tick(){if(i<text.length){span.textContent+=text[i];i++;wBox().scrollTop=wBox().scrollHeight;setTimeout(tick,10+Math.random()*8);}else{if(cur)cur.remove();}}tick();}
+    const KB={'rtl':'RTL describes circuits using registers and combinational logic. Kepler generates synthesizable Verilog from natural language.','verilog':'Kepler targets Verilog-2001 compatible with Yosys, Verilator, and IVerilog.','synthesis':'Converts RTL to gate-level netlist using Yosys + ABC.','synth':'Yosys + ABC synthesis targeting Sky130/GF180 standard cells.','pnr':'Place & Route via OpenROAD. Floorplan → Place → CTS → Route.','drc':'Design Rule Check via Magic. Zero violations required.','lvs':'Layout vs Schematic via Netgen. Physical must match logical.','gds':'GDSII exported after all 14 sign-off gates pass.','formal':'SymbiYosys BMC depth≥20, prove mode if <200 FF.','sky130':'Open 130nm PDK from SkyWater/Google. Default PDK.','kepler':'AI ASIC design: natural language → RTL → verification → synthesis → PnR → GDS.','hello':'Hey! Ask me about any ASIC stage.','hi':'Hello! Ask about chip design.','help':'I cover: RTL, synthesis, PnR, formal, sim, DRC/LVS, STA, GDS, Sky130/GF180.','tinytapeout':'TinyTapeout TTGF26a: GF180MCU PDK, deadline 2026-06-22.','open source':'Yes! Yosys, OpenROAD, Verilator, SymbiYosys, Magic — all FOSS.'};
+    function getReply(msg){const lower=msg.toLowerCase().replace(/[?.,!'"]/g,'').trim();for(const[k,v]of Object.entries(KB)){if(lower.includes(k))return v;}return 'For in-depth assistance, try the full Kepler tool — click "Launch Kepler" above!';}
+    async function handleSend(e){e.preventDefault();const input=document.getElementById('chat-input'),msg=input.value.trim();if(!msg)return false;input.value='';addMsg('user',msg);addTyping();await new Promise(r=>setTimeout(r,500+Math.random()*300));removeTyping();const aiEl=addMsg('assistant','');streamReply(aiEl,getReply(msg));return false;}
+
+    /* ── Kepler Analytics Beacon ── */
+    (function(){try{var d={page:location.pathname,referrer:document.referrer||'',screen_w:screen.width,screen_h:screen.height,lang:navigator.language||''};fetch('https://kepler-web.onrender.com/api/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d),mode:'cors',keepalive:true}).catch(function(){});}catch(e){}})();
+    </script>
+</body>
+</html>
